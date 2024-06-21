@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 
 const supabaseUrl = 'https://pouexwwhwxnuzoxvnejb.supabase.co';
@@ -19,6 +18,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Circuit Coffee',
       theme: ThemeData(
         primarySwatch: Colors.blue,
@@ -37,23 +37,22 @@ class _AddPedidoScreenState extends State<AddPedidoScreen> {
   TextEditingController _clienteController = TextEditingController();
   TextEditingController _bebidaController = TextEditingController();
   TextEditingController _acompanhamentoController = TextEditingController();
+  TextEditingController _valorController = TextEditingController();
+  TextEditingController _obsPedController = TextEditingController();
 
   @override
   void dispose() {
     _clienteController.dispose();
     _bebidaController.dispose();
     _acompanhamentoController.dispose();
+    _valorController.dispose();
+    _obsPedController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Adicionar Pedido'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
       body: Row(
         children: [
           Expanded(
@@ -93,6 +92,19 @@ class _AddPedidoScreenState extends State<AddPedidoScreen> {
                         labelText: 'Acompanhamento',
                       ),
                     ),
+                    TextField(
+                      controller: _valorController,
+                      decoration: InputDecoration(
+                        labelText: 'Valor',
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: _obsPedController,
+                      decoration: InputDecoration(
+                        labelText: 'Observação',
+                      ),
+                    ),
                     DropdownButtonFormField<String>(
                       value: 'Aguardando',
                       decoration: InputDecoration(
@@ -116,6 +128,8 @@ class _AddPedidoScreenState extends State<AddPedidoScreen> {
                           _clienteController.text,
                           _bebidaController.text,
                           _acompanhamentoController.text,
+                          double.tryParse(_valorController.text) ?? 0.0,
+                          _obsPedController.text,
                         );
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                           content: Text('Pedido adicionado com sucesso!'),
@@ -147,26 +161,49 @@ class _AddPedidoScreenState extends State<AddPedidoScreen> {
     String nomeCliente,
     String bebida,
     String acompanhamento,
+    double valor,
+    String obsPed,
   ) async {
     final now = DateTime.now();
     final formattedDate = DateFormat('yyyy-MM-dd').format(now);
 
+    final lastId = await _getLastId();
+
     final pedido = {
-      'id': Uuid().v4(),
+      'id': lastId,
       'Bebida': bebida,
       'Acompanhamento': acompanhamento,
-      'StatusPedido': 'Aguardando', // ou 'Aprovado' ou 'Cancelado'
+      'Valor': valor,
+      'ObsPed': obsPed,
+      'StatusPedido': 'Aguardando',
       'DataPed': formattedDate,
       'NomeCli': nomeCliente,
     };
 
-    final response = await Supabase.instance.client
-        .from('core_pedido')
-        .insert([pedido]).then((value) => value);
+    final response =
+        await Supabase.instance.client.from('core_pedido').insert([pedido]);
+
+    if (response == null) {
+      print('Erro ao adicionar pedido: Unknown error');
+      return;
+    }
 
     if (response.error != null) {
-      throw response.error!;
+      print('Erro ao adicionar pedido: ${response.error}');
+      return;
     }
+  }
+
+  Future<int> _getLastId() async {
+    final response = await Supabase.instance.client
+        .from('core_pedido')
+        .select('id')
+        .order('id', ascending: false)
+        .limit(1);
+
+    final lastId =
+        response.isNotEmpty ? response[0]['id'] : 1; // or another default value
+    return lastId + 1;
   }
 }
 
@@ -207,7 +244,7 @@ class VisualizarPedidosScreen extends StatelessWidget {
                   ),
                 ),
                 subtitle: Text(
-                  'Status: ${pedido['StatusPedido']}',
+                  'Status: ${pedido['StatusPedido']} - Valor: ${pedido['Valor']} - Observação: ${pedido['ObsPed']}',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
@@ -225,7 +262,7 @@ class VisualizarPedidosScreen extends StatelessWidget {
     final response = await Supabase.instance.client
         .from('core_pedido')
         .select('*')
-        .order('Data', ascending: false);
-    return response;
+        .order('DataPed', ascending: false);
+    return List<Map<String, dynamic>>.from(response);
   }
 }
